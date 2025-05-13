@@ -1,0 +1,37 @@
+[
+  {
+    "name": "admin",
+    "path": "/admin",
+    "component": "/app/pages/admin/index.vue",
+    "chunkName": "pages/admin/index",
+    "_name": "_be9dc5d0"
+  },
+  {
+    "name": "client",
+    "path": "/client",
+    "component": "/app/pages/client/index.vue",
+    "chunkName": "pages/client/index",
+    "_name": "_67043d78"
+  },
+  {
+    "name": "logout",
+    "path": "/logout",
+    "component": "/app/pages/logout.vue",
+    "chunkName": "pages/logout",
+    "_name": "_49c57cf4"
+  },
+  {
+    "name": "monitor",
+    "path": "/monitor",
+    "component": "/app/pages/monitor/index.vue",
+    "chunkName": "pages/monitor/index",
+    "_name": "_758261e3"
+  },
+  {
+    "name": "index",
+    "path": "/",
+    "component": "/app/pages/index.vue",
+    "chunkName": "pages/index",
+    "_name": "_2dfb1658"
+  }
+]

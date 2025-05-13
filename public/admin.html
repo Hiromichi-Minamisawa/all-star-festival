@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>感謝祭 管理画面</title>
+  <style>
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .tabs button { margin-right: 10px; }
+  </style>
+</head>
+<body>
+  <h1>感謝祭 管理画面</h1>
+
+  <div class="tabs">
+    <button onclick="switchTab('send-question')">問題送信</button>
+    <button onclick="switchTab('results')">集計結果</button>
+  </div>
+
+  <div id="send-question" class="tab-content active">
+    <h2>問題送信</h2>
+    <form id="question-form">
+      <label>問題文:<br>
+        <input type="text" id="question" required>
+      </label><br><br>
+      <label>選択肢 A:<br>
+        <input type="text" id="choiceA" required>
+      </label><br>
+      <label>選択肢 B:<br>
+        <input type="text" id="choiceB" required>
+      </label><br>
+      <label>選択肢 C:<br>
+        <input type="text" id="choiceC" required>
+      </label><br>
+      <label>選択肢 D:<br>
+        <input type="text" id="choiceD" required>
+      </label><br><br>
+      <label>正解（A〜D）:<br>
+        <input type="text" id="answer" maxlength="1" required>
+      </label><br><br>
+      <button type="submit">問題を送信</button>
+    </form>
+  </div>
+
+  <div id="results" class="tab-content">
+    <h2>集計結果</h2>
+    <p>（ここは後ほど実装）</p>
+  </div>
+
+  <script>
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    // WebSocket 接続
+    const socket = new WebSocket("wss://your-server-url"); // 後で書き換える
+
+    socket.onopen = () => {
+      console.log("WebSocket接続成功");
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocketエラー:", error);
+    };
+
+    // フォーム送信時にWebSocket経由で送信
+    document.getElementById("question-form").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const data = {
+        type: "question",
+        question: document.getElementById("question").value,
+        choices: {
+          A: document.getElementById("choiceA").value,
+          B: document.getElementById("choiceB").value,
+          C: document.getElementById("choiceC").value,
+          D: document.getElementById("choiceD").value
+        },
+        answer: document.getElementById("answer").value.toUpperCase()
+      };
+      socket.send(JSON.stringify(data));
+      alert("問題を送信しました！");
+      this.reset();
+    });
+  </script>
+</body>
+</html>
