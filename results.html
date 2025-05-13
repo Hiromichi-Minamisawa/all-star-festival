@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>最終結果</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background: #eee;
+    }
+  </style>
+</head>
+<body>
+  <h1>最終結果</h1>
+  <button onclick="loadResults()">結果を読み込む</button>
+  <table id="rankingTable">
+    <thead>
+      <tr>
+        <th>順位</th>
+        <th>名前</th>
+        <th>正解数</th>
+        <th>合計時間（ms）</th>
+      </tr>
+    </thead>
+    <tbody id="rankingBody"></tbody>
+  </table>
+
+  <script>
+    async function loadResults() {
+      try {
+        const res = await fetch('/total');
+        const rawData = await res.json();
+
+        const summary = {};
+
+        for (const record of rawData) {
+          const { name, isCorrect, elapse } = record.data;
+          if (!name) continue; // 名前がないデータはスキップ
+
+          if (!summary[name]) {
+            summary[name] = { correct: 0, time: 0 };
+          }
+
+          if (isCorrect) {
+            summary[name].correct += 1;
+            summary[name].time += elapse || 0;
+          }
+        }
+
+        const ranking = Object.entries(summary).map(([name, data]) => ({
+          name,
+          correct: data.correct,
+          time: data.time
+        })).sort((a, b) => {
+          if (b.correct !== a.correct) return b.correct - a.correct;
+          return a.time - b.time;
+        });
+
+        const tbody = document.getElementById('rankingBody');
+        tbody.innerHTML = '';
+        ranking.forEach((user, index) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${user.name}</td>
+            <td>${user.correct}</td>
+            <td>${user.time}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        alert('結果の読み込みに失敗しました。');
+        console.error(e);
+      }
+    }
+  </script>
+</body>
+</html>

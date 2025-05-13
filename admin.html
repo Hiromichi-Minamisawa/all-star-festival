@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>管理画面 - 感謝祭</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 10px; }
+    .tab { padding: 5px 10px; background: #ddd; cursor: pointer; border-radius: 5px; }
+    .tab.active { background: #333; color: white; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    button { padding: 10px 15px; margin: 5px; }
+    textarea { width: 100%; height: 80px; font-size: 16px; margin: 10px 0; }
+    pre { background: #f4f4f4; padding: 10px; height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h1>管理画面 - 感謝祭</h1>
+
+  <!-- タブ切り替え -->
+  <div class="tabs">
+    <div class="tab active" data-panel="controls">操作</div>
+    <div class="tab" data-panel="log">ログ</div>
+  </div>
+
+  <!-- 操作パネル -->
+  <div id="controls" class="panel active">
+    <h3>問題を出題：</h3>
+    <textarea id="questionInput" placeholder="ここに問題文を入力してください"></textarea><br>
+    <button id="sendQuestion">問題を出題</button>
+
+    <hr>
+
+    <button id="goButton">問題スタート（GO）</button>
+    <button id="resetAnswers">解答履歴をリセット</button>
+    <button id="showTotalRanking">総合ランキング表示</button>
+
+    <h3>正解を送信：</h3>
+    <button class="sendResult" data-answer="1">1</button>
+    <button class="sendResult" data-answer="2">2</button>
+    <button class="sendResult" data-answer="3">3</button>
+    <button class="sendResult" data-answer="4">4</button>
+  </div>
+
+  <!-- ログパネル -->
+  <div id="log" class="panel">
+    <pre id="logArea"></pre>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+
+    // タブ切り替え処理
+    const tabs = document.querySelectorAll('.tab');
+    const panels = document.querySelectorAll('.panel');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        panels.forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.panel).classList.add('active');
+      });
+    });
+
+    // 出題処理（question + go）
+    document.getElementById('sendQuestion').addEventListener('click', () => {
+      const questionText = document.getElementById('questionInput').value.trim();
+      if (!questionText) return alert('問題文を入力してください');
+      socket.emit('question', { text: questionText });
+      socket.emit('go');
+      log(`問題を出題：${questionText}`);
+    });
+
+    // GOのみ送信
+    document.getElementById('goButton').addEventListener('click', () => {
+      socket.emit('go');
+      log('GO を送信しました');
+    });
+
+    // 解答履歴リセット
+    document.getElementById('resetAnswers').addEventListener('click', () => {
+      socket.emit('resetAnswerResult');
+      log('解答履歴をリセットしました');
+    });
+
+    // ランキング表示
+    document.getElementById('showTotalRanking').addEventListener('click', () => {
+      socket.emit('showTotalRanking');
+      log('総合ランキングを表示しました');
+    });
+
+    // 正解送信
+    document.querySelectorAll('.sendResult').forEach(button => {
+      button.addEventListener('click', () => {
+        const correctAnswer = button.dataset.answer;
+        socket.emit('result', { correctAnswer });
+        log(`正解「${correctAnswer}」を送信しました`);
+      });
+    });
+
+    function log(msg) {
+      const area = document.getElementById('logArea');
+      area.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      area.scrollTop = area.scrollHeight;
+    }
+  </script>
+</body>
+</html>
