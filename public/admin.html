@@ -1,88 +1,112 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>感謝祭 管理画面</title>
+  <meta charset="UTF-8" />
+  <title>管理者画面 - 感謝祭</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    .tabs button { margin-right: 10px; }
+    body { font-family: sans-serif; padding: 20px; }
+    label { display: block; margin-top: 10px; }
+    input, textarea { width: 100%; padding: 5px; margin-top: 5px; }
+    button { margin-top: 15px; padding: 10px 20px; font-size: 16px; }
   </style>
 </head>
 <body>
-  <h1>感謝祭 管理画面</h1>
+  <h1>管理者画面</h1>
 
-  <div class="tabs">
-    <button onclick="switchTab('send-question')">問題送信</button>
-    <button onclick="switchTab('results')">集計結果</button>
-  </div>
+  <label>問題文：
+    <textarea id="questionText" rows="3" placeholder="問題文を入力してください"></textarea>
+  </label>
 
-  <div id="send-question" class="tab-content active">
-    <h2>問題送信</h2>
-    <form id="question-form">
-      <label>問題文:<br>
-        <input type="text" id="question" required>
-      </label><br><br>
-      <label>選択肢 A:<br>
-        <input type="text" id="choiceA" required>
-      </label><br>
-      <label>選択肢 B:<br>
-        <input type="text" id="choiceB" required>
-      </label><br>
-      <label>選択肢 C:<br>
-        <input type="text" id="choiceC" required>
-      </label><br>
-      <label>選択肢 D:<br>
-        <input type="text" id="choiceD" required>
-      </label><br><br>
-      <label>正解（A〜D）:<br>
-        <input type="text" id="answer" maxlength="1" required>
-      </label><br><br>
-      <button type="submit">問題を送信</button>
-    </form>
-  </div>
+  <label>選択肢1：
+    <input type="text" id="choice1" placeholder="選択肢1" />
+  </label>
+  <label>選択肢2：
+    <input type="text" id="choice2" placeholder="選択肢2" />
+  </label>
+  <label>選択肢3：
+    <input type="text" id="choice3" placeholder="選択肢3" />
+  </label>
+  <label>選択肢4：
+    <input type="text" id="choice4" placeholder="選択肢4" />
+  </label>
 
-  <div id="results" class="tab-content">
-    <h2>集計結果</h2>
-    <p>（ここは後ほど実装）</p>
-  </div>
+  <label>正解番号（1〜4）：
+    <input type="number" id="correctAnswer" min="1" max="4" />
+  </label>
+
+  <button id="sendQuestionBtn">問題送信</button>
+  <button id="startBtn">出題スタート</button>
+  <button id="showResultBtn">結果発表</button>
 
   <script>
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-      });
-      document.getElementById(tabId).classList.add('active');
-    }
+    // サーバーURLは環境に応じて必ず書き換えてください
+    const socket = io('https://all-star-festival.onrender.com');
 
-    // WebSocket 接続
-    const socket = new WebSocket("wss://your-server-url"); // 後で書き換える
+    const questionText = document.getElementById('questionText');
+    const choiceInputs = [
+      document.getElementById('choice1'),
+      document.getElementById('choice2'),
+      document.getElementById('choice3'),
+      document.getElementById('choice4'),
+    ];
+    const correctAnswerInput = document.getElementById('correctAnswer');
 
-    socket.onopen = () => {
-      console.log("WebSocket接続成功");
-    };
+    const sendBtn = document.getElementById('sendQuestionBtn');
+    const startBtn = document.getElementById('startBtn');
+    const showResultBtn = document.getElementById('showResultBtn');
 
-    socket.onerror = (error) => {
-      console.error("WebSocketエラー:", error);
-    };
+    // 問題送信
+    sendBtn.addEventListener('click', () => {
+      const qText = questionText.value.trim();
+      if (!qText) {
+        alert('問題文を入力してください');
+        return;
+      }
+      const choices = choiceInputs.map(input => input.value.trim());
+      if (choices.some(c => !c)) {
+        alert('すべての選択肢を入力してください');
+        return;
+      }
+      const correct = Number(correctAnswerInput.value);
+      if (!(correct >= 1 && correct <= 4)) {
+        alert('正解番号は1から4の数字で入力してください');
+        return;
+      }
+      sendBtn.disabled = true;
 
-    // フォーム送信時にWebSocket経由で送信
-    document.getElementById("question-form").addEventListener("submit", function(e) {
-      e.preventDefault();
-      const data = {
-        type: "question",
-        question: document.getElementById("question").value,
-        choices: {
-          A: document.getElementById("choiceA").value,
-          B: document.getElementById("choiceB").value,
-          C: document.getElementById("choiceC").value,
-          D: document.getElementById("choiceD").value
-        },
-        answer: document.getElementById("answer").value.toUpperCase()
+      const questionData = {
+        text: qText,
+        choices: choices,
+        correctAnswer: correct.toString()
       };
-      socket.send(JSON.stringify(data));
-      alert("問題を送信しました！");
-      this.reset();
+      console.log('問題送信:', questionData);
+
+      socket.emit('question', questionData);
+
+      setTimeout(() => sendBtn.disabled = false, 2000);
+    });
+
+    // 出題スタート
+    startBtn.addEventListener('click', () => {
+      console.log('出題スタート');
+      socket.emit('go');
+    });
+
+    // 結果発表
+    showResultBtn.addEventListener('click', () => {
+      const correct = correctAnswerInput.value;
+      if (!(correct >= 1 && correct <= 4)) {
+        alert('正解番号は1から4の数字で入力してください');
+        return;
+      }
+      console.log('結果発表 正解:', correct);
+      socket.emit('result', { correctAnswer: correct.toString() });
+    });
+
+    socket.on('connect', () => {
+      console.log('管理者画面 WebSocket接続完了');
     });
   </script>
 </body>
