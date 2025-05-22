@@ -1,157 +1,131 @@
 const express = require('express');
-const path = require('path');
-const bodyParser = require('body-parser');
 const http = require('http');
-const socketIO = require('socket.io');
+const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIo(server);  // socket.io v2 の正しい書き方
 
-const port = process.env.PORT || 3000;
-const host = process.env.HOST || '0.0.0.0';
+io.origins('*:*'); // ★CORS対策（開発時用）
 
-// データ管理
-let answerResult = [];        // [{ data: { id, name, choice, time, elapse }, questionNumber }]
-let questionNumber = 0;
-let members = {};             // { socket.id: { name, score, totalTime } }
-let goTimestamp = null;
+app.use(express.static('public'));
+app.use(express.json());
 
-// ミドルウェア
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: false }));
+const PORT = process.env.PORT || 3000;
 
-// 静的ファイル
-app.use(express.static(path.join(__dirname, '../public')));
-app.get('/client.html', (req, res) => res.sendFile(path.join(__dirname, '../client.html')));
-app.get('/admin.html', (req, res) => res.sendFile(path.join(__dirname, '../admin.html')));
-app.get('/monitor.html', (req, res) => res.sendFile(path.join(__dirname, '../monitor.html')));
-app.get('/results.html', (req, res) => res.sendFile(path.join(__dirname, '../results.html')));
+let currentQuestion = null;
+let currentCorrectAnswer = null;
+const answers = [];
 
-// API
-app.get('/reset', (req, res) => {
-  answerResult = [];
-  questionNumber = 0;
-  members = {};
-  goTimestamp = null;
-  res.send('リセットしました');
+const clients = {
+  admins: new Set(),
+  participants: new Set(),
+  monitors: new Set(),
+};
+
+io.on('connection', socket => {
+  console.log(`クライアント接続: ${socket.id}`);
+
+  socket.on('registerAdmin', () => {
+    clients.admins.add(socket.id);
+    console.log(`管理者登録: ${socket.id}`);
+  });
+
+  socket.on('registerName', data => {
+    if (!data || !data.name) return;
+    socket.data.name = data.name;
+    clients.participants.add(socket.id);
+    console.log(`参加者登録: ${data.name} (${socket.id})`);
+  });
+
+  socket.on('registerMonitor', () => {
+    clients.monitors.add(socket.id);
+    console.log(`モニター登録: ${socket.id}`);
+  });
+
+  socket.on('question', data => {
+    if (!data || !data.text || !data.choices || !data.correctAnswer) return;
+    currentQuestion = data;
+    currentCorrectAnswer = data.correctAnswer;
+
+    answers.length = 0; // 以前の回答をクリア
+
+    console.log(`問題送信: ${data.text}`);
+    clients.participants.forEach(id => {
+      io.to(id).emit('question', {
+        text: data.text,
+        choices: data.choices,
+      });
+    });
+    clients.monitors.forEach(id => {
+      io.to(id).emit('go');
+    });
+  });
+
+  socket.on('go', () => {
+    console.log('出題スタート');
+    clients.participants.forEach(id => {
+      io.to(id).emit('go');
+    });
+    clients.monitors.forEach(id => {
+      io.to(id).emit('go');
+    });
+  });
+
+  socket.on('answer', data => {
+    const name = socket.data.name;
+    if (!name) {
+      console.log('名前未登録の参加者からの回答を無視');
+      return;
+    }
+    if (!currentCorrectAnswer) {
+      console.log('現在出題中の問題がないため回答無視');
+      return;
+    }
+    const choice = data.choice;
+    const elapsed = data.elapsed || 0;
+
+    if (answers.find(a => a.name === name)) {
+      console.log(`${name} はすでに回答済み`);
+      return;
+    }
+
+    const isCorrect = choice !== null && choice.toString() === currentCorrectAnswer.toString();
+
+    answers.push({ name, choice, elapsed, isCorrect });
+
+    console.log(`回答受付: ${name} 選択: ${choice} 正誤: ${isCorrect} 経過: ${elapsed}`);
+
+    clients.monitors.forEach(id => {
+      io.to(id).emit('answer', { name, choice, elapsed, result: isCorrect ? '○' : '×' });
+    });
+  });
+
+  socket.on('result', data => {
+    if (!data || !data.correctAnswer) return;
+    currentCorrectAnswer = data.correctAnswer;
+    console.log(`結果発表: 正解は ${currentCorrectAnswer}`);
+
+    clients.participants.forEach(id => {
+      io.to(id).emit('result', { correctAnswer: currentCorrectAnswer });
+    });
+    clients.monitors.forEach(id => {
+      io.to(id).emit('result', { correctAnswer: currentCorrectAnswer });
+    });
+  });
+
+  socket.on('disconnect', () => {
+    clients.admins.delete(socket.id);
+    clients.participants.delete(socket.id);
+    clients.monitors.delete(socket.id);
+    console.log(`切断: ${socket.id}`);
+  });
 });
 
 app.get('/total', (req, res) => {
-  res.json(answerResult);
+  res.json(answers);
 });
 
-app.get('/members', (req, res) => {
-  res.json(members);
-});
-
-// Socket.IO 処理
-io.on('connection', socket => {
-  console.log('🔌 Connected:', socket.id);
-
-  // ユーザー名登録
-  socket.on('registerName', name => {
-    members[socket.id] = {
-      name,
-      score: 0,
-      totalTime: 0
-    };
-    console.log(`✅ 登録: ${socket.id} as ${name}`);
-  });
-
-  // 問題スタート
-  socket.on('go', () => {
-    goTimestamp = Date.now();
-    io.emit('go');
-    console.log('🟢 GO 信号送信');
-  });
-
-  // 解答送信
-  socket.on('answer', data => {
-    const answeredTimestamp = Date.now();
-    data.id = socket.id;
-
-    const dt = new Date();
-    const h = ('00' + dt.getHours()).slice(-2);
-    const m = ('00' + dt.getMinutes()).slice(-2);
-    const s = ('00' + dt.getSeconds()).slice(-2);
-    const ms = dt.getMilliseconds();
-    data.time = `${h}:${m}:${s} ${ms}`;
-    data.elapse = answeredTimestamp - goTimestamp;
-
-    // 名前を付加
-    if (members[socket.id]) {
-      data.name = members[socket.id].name;
-    } else {
-      data.name = '名無し';
-    }
-
-    // ログとして保存
-    answerResult.push({ data, questionNumber });
-
-    io.emit('answer', { data });
-    console.log(`📩 解答: ${data.name} - ${data.choice} (${data.elapse}ms)`);
-  });
-
-  // 正解発表
-  socket.on('result', ({ correctAnswer }) => {
-    // 各メンバーの正誤と加点処理
-    answerResult.forEach(entry => {
-      if (entry.questionNumber === questionNumber) {
-        const { id, choice, elapse } = entry.data;
-        if (members[id]) {
-          if (choice === correctAnswer) {
-            members[id].score += 1;
-            members[id].totalTime += elapse;
-          }
-        }
-      }
-    });
-
-    io.emit('result', { correctAnswer });
-    console.log(`🎯 正解発表: ${correctAnswer}`);
-  });
-
-  // 総合ランキング送信
-  socket.on('showTotalRanking', () => {
-    const ranking = Object.entries(members)
-      .map(([id, info]) => ({
-        id,
-        name: info.name,
-        score: info.score,
-        totalTime: info.totalTime
-      }))
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return a.totalTime - b.totalTime;
-      });
-
-    io.emit('showTotalRanking', ranking);
-    console.log('📊 総合ランキング送信');
-  });
-
-  // 問題番号セット
-  socket.on('setQuestionNumber', num => {
-    questionNumber = num;
-  });
-
-  // リセット処理
-  socket.on('resetMembers', () => {
-    members = {};
-  });
-
-  socket.on('resetAnswerResult', () => {
-    answerResult = [];
-    questionNumber = 0;
-  });
-
-  // 切断
-  socket.on('disconnect', () => {
-    console.log('❌ Disconnected:', socket.id);
-  });
-});
-
-// サーバー起動
-server.listen(port, host, () => {
-  console.log(`🚀 Server running at http://${host}:${port}`);
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

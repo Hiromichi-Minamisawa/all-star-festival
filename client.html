@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>クイズ参加者画面</title>
-  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; text-align: center; }
     .hidden { display: none; }
@@ -18,8 +18,8 @@
   <!-- 名前登録 -->
   <div id="register">
     <label for="nameInput">名前を入力：</label>
-    <input type="text" id="nameInput" placeholder="例：たなか">
-    <button onclick="registerName()">参加</button>
+    <input type="text" id="nameInput" placeholder="例：たなか" />
+    <button id="registerBtn">参加</button>
   </div>
 
   <!-- タイマー -->
@@ -28,10 +28,10 @@
   <!-- クイズ表示 -->
   <div id="quiz" class="hidden">
     <h2 id="questionText">問題が表示されます</h2>
-    <button class="answer-button" onclick="submitAnswer('1')">1</button>
-    <button class="answer-button" onclick="submitAnswer('2')">2</button>
-    <button class="answer-button" onclick="submitAnswer('3')">3</button>
-    <button class="answer-button" onclick="submitAnswer('4')">4</button>
+    <button class="answer-button" data-choice="1">1</button>
+    <button class="answer-button" data-choice="2">2</button>
+    <button class="answer-button" data-choice="3">3</button>
+    <button class="answer-button" data-choice="4">4</button>
   </div>
 
   <!-- 解答後待機 -->
@@ -45,27 +45,46 @@
     <h2 id="resultMessage"></h2>
   </div>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io();
+    // 必ずサーバーのURLを環境に合わせて書き換えてください
+    const socket = io('https://all-star-festival.onrender.com');
+
     let yourName = '';
     let yourAnswer = null;
     let startTime = null;
     let countdownInterval = null;
     const COUNTDOWN_SECONDS = 10;
 
-    function registerName() {
+    const registerDiv = document.getElementById('register');
+    const quizDiv = document.getElementById('quiz');
+    const standbyDiv = document.getElementById('standby');
+    const resultDiv = document.getElementById('result');
+    const timerDiv = document.getElementById('timer');
+    const yourAnswerMessage = document.getElementById('yourAnswerMessage');
+    const questionText = document.getElementById('questionText');
+
+    document.getElementById('registerBtn').addEventListener('click', () => {
       const nameInput = document.getElementById('nameInput').value.trim();
-      if (!nameInput) return alert('名前を入力してください');
+      if (!nameInput) {
+        alert('名前を入力してください');
+        return;
+      }
       yourName = nameInput;
-
       socket.emit('registerName', { name: yourName });
+      registerDiv.classList.add('hidden');
+    });
 
-      document.getElementById('register').classList.add('hidden');
-    }
+    // 回答ボタンにイベント設定
+    quizDiv.querySelectorAll('.answer-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!yourName || yourAnswer !== null) return;
+        const choice = btn.getAttribute('data-choice');
+        submitAnswer(choice);
+      });
+    });
 
     function submitAnswer(choice) {
-      if (!yourName || yourAnswer !== null) return;
-
       yourAnswer = choice;
       const elapsed = Date.now() - startTime;
 
@@ -73,27 +92,30 @@
 
       clearInterval(countdownInterval);
 
-      document.getElementById('quiz').classList.add('hidden');
-      document.getElementById('standby').classList.remove('hidden');
-      document.getElementById('yourAnswerMessage').textContent = `あなたの回答： ${choice}`;
+      quizDiv.classList.add('hidden');
+      standbyDiv.classList.remove('hidden');
+      yourAnswerMessage.textContent = `あなたの回答： ${choice}`;
     }
 
     function startCountdown() {
       let remaining = COUNTDOWN_SECONDS * 1000;
 
+      timerDiv.textContent = `残り時間：${(remaining / 1000).toFixed(1)} 秒`;
       countdownInterval = setInterval(() => {
         remaining -= 100;
-        const seconds = (remaining / 1000).toFixed(1);
-        document.getElementById('timer').textContent = `残り時間：${seconds} 秒`;
+        if (remaining < 0) remaining = 0;
+        timerDiv.textContent = remaining > 0
+          ? `残り時間：${(remaining / 1000).toFixed(1)} 秒`
+          : '時間切れ';
 
         if (remaining <= 0) {
           clearInterval(countdownInterval);
-          document.getElementById('timer').textContent = '時間切れ';
-
           if (yourAnswer === null) {
-            document.getElementById('quiz').classList.add('hidden');
-            document.getElementById('standby').classList.remove('hidden');
-            document.getElementById('yourAnswerMessage').textContent = '未回答';
+            // 未回答時の処理
+            quizDiv.classList.add('hidden');
+            standbyDiv.classList.remove('hidden');
+            yourAnswerMessage.textContent = '未回答';
+            socket.emit('answer', { choice: null, name: yourName, elapsed: COUNTDOWN_SECONDS * 1000 });
           }
         }
       }, 100);
@@ -101,45 +123,42 @@
 
     // 問題が届いたとき
     socket.on('question', data => {
-      if (!yourName) return; // 未登録なら無視
-
+      if (!yourName) return;
       yourAnswer = null;
-      document.getElementById('questionText').textContent = data.text || '問題';
-
-      document.getElementById('quiz').classList.remove('hidden');
-      document.getElementById('standby').classList.add('hidden');
-      document.getElementById('result').classList.add('hidden');
-      document.getElementById('timer').classList.remove('hidden');
+      standbyDiv.classList.add('hidden');
+      resultDiv.classList.add('hidden');
+      quizDiv.classList.remove('hidden');
+      timerDiv.classList.remove('hidden');
+      questionText.textContent = data.text || '問題が届きました。';
     });
 
     // 出題スタート
     socket.on('go', () => {
-      if (!yourName) return; // 未登録なら無視
-
+      if (!yourName) return;
       startTime = Date.now();
-      startCountdown();
-
       yourAnswer = null;
-      document.getElementById('quiz').classList.remove('hidden');
-      document.getElementById('standby').classList.add('hidden');
-      document.getElementById('result').classList.add('hidden');
+      standbyDiv.classList.add('hidden');
+      resultDiv.classList.add('hidden');
+      quizDiv.classList.remove('hidden');
+      timerDiv.classList.remove('hidden');
+      startCountdown();
     });
 
     // 結果発表
     socket.on('result', data => {
-      document.getElementById('quiz').classList.add('hidden');
-      document.getElementById('standby').classList.add('hidden');
-      document.getElementById('result').classList.remove('hidden');
-      document.getElementById('timer').classList.add('hidden');
+      quizDiv.classList.add('hidden');
+      standbyDiv.classList.add('hidden');
+      timerDiv.classList.add('hidden');
+      resultDiv.classList.remove('hidden');
       clearInterval(countdownInterval);
 
       const correct = data.correctAnswer;
       if (yourAnswer === null) {
-        document.getElementById('resultMessage').textContent = '未回答でした';
+        resultMessage.textContent = '未回答でした';
       } else if (yourAnswer === correct) {
-        document.getElementById('resultMessage').textContent = '正解！🎉';
+        resultMessage.textContent = '正解！🎉';
       } else {
-        document.getElementById('resultMessage').textContent = `不正解… 正解は「${correct}」`;
+        resultMessage.textContent = `不正解… 正解は「${correct}」`;
       }
     });
   </script>
