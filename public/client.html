@@ -2,179 +2,84 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>クイズ画面</title>
+  <title>クライアント画面 - 感謝祭</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <script src="https://cdn.socket.io/2.5.1/socket.io.js"></script>
   <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      padding: 20px;
-      background: #f0f0f0;
-      text-align: center;
-    }
-    #nameInputArea {
-      margin-bottom: 20px;
-    }
-    #nameInput {
-      padding: 8px;
-      font-size: 1.2em;
-    }
-    #quizArea {
-      display: none;
-    }
-    .question {
-      font-size: 1.6em;
-      margin-bottom: 20px;
-      font-weight: 700;
-    }
-    .choices button {
-      display: block;
-      width: 60%;
-      margin: 10px auto;
-      font-size: 1.3em;
-      padding: 12px;
-      cursor: pointer;
-      border-radius: 5px;
-      border: 1px solid #444;
-      background-color: #fff;
-      transition: background-color 0.3s;
-    }
-    .choices button:hover:not(:disabled) {
-      background-color: #e0e0e0;
-    }
-    .choices button:disabled {
-      background-color: #ccc;
-      cursor: default;
-    }
-    #standby {
-      font-size: 1.4em;
-      margin-top: 20px;
-      color: #666;
-      display: none;
-    }
-    #result {
-      font-size: 1.6em;
-      margin-top: 30px;
-      font-weight: 700;
-    }
+    body { font-family: sans-serif; text-align: center; padding: 2em; background-color: #f8f8f8; }
+    #question { font-size: 1.5em; margin-bottom: 1em; }
+    .option { display: block; margin: 0.5em auto; padding: 1em; background-color: #e0e0e0; border-radius: 8px; width: 80%; font-size: 1.2em; cursor: pointer; }
+    .disabled { pointer-events: none; opacity: 0.5; }
+    #timer { font-size: 1.2em; color: #d00; margin-top: 1em; }
   </style>
 </head>
 <body>
-  <h1>クイズ大会</h1>
-
-  <div id="nameInputArea">
-    <p>名前を入力してください：</p>
-    <input type="text" id="nameInput" maxlength="20" />
-    <button id="registerBtn">登録</button>
-  </div>
-
-  <div id="quizArea">
-    <div class="question" id="questionText"></div>
-    <div class="choices" id="choices"></div>
-    <div id="standby">回答を送信しました。スタンバイ中...</div>
-    <div id="result"></div>
-  </div>
+  <h1>クイズ参加画面</h1>
+  <div id="question">お待ちください…</div>
+  <div id="options"></div>
+  <div id="timer"></div>
 
   <script>
-    (() => {
-      const socket = io();
+    const socket = io();
+    let answered = false;
+    let timerInterval;
+    let remainingTime = 0;
 
-      let userName = '';
-      let questionStartTime = 0;
+    socket.on('question', (data) => {
+      showQuestion(data.text, data.choices);
+    });
 
-      const nameInputArea = document.getElementById('nameInputArea');
-      const nameInput = document.getElementById('nameInput');
-      const registerBtn = document.getElementById('registerBtn');
-      const quizArea = document.getElementById('quizArea');
-      const questionText = document.getElementById('questionText');
-      const choicesDiv = document.getElementById('choices');
-      const standbyDiv = document.getElementById('standby');
-      const resultDiv = document.getElementById('result');
+    function showQuestion(text, choices) {
+      const questionDiv = document.getElementById("question");
+      const optionsDiv = document.getElementById("options");
+      const timerDiv = document.getElementById("timer");
 
-      function enableChoices(enabled) {
-        const buttons = choicesDiv.querySelectorAll('button');
-        buttons.forEach(btn => {
-          btn.disabled = !enabled;
-        });
-      }
+      questionDiv.textContent = text;
+      optionsDiv.innerHTML = "";
+      timerDiv.textContent = "";
 
-      registerBtn.addEventListener('click', () => {
-        const val = nameInput.value.trim();
-        if (!val) {
-          alert('名前を入力してください');
-          return;
+      answered = false;
+      remainingTime = 10;
+      timerDiv.textContent = `残り時間: ${remainingTime}秒`;
+
+      timerInterval = setInterval(() => {
+        remainingTime--;
+        timerDiv.textContent = `残り時間: ${remainingTime}秒`;
+
+        if (remainingTime <= 0) {
+          clearInterval(timerInterval);
+          if (!answered) sendAnswer(null);
+          disableOptions();
         }
-        userName = val;
-        nameInputArea.style.display = 'none';
-        quizArea.style.display = 'block';
+      }, 1000);
+
+      choices.forEach((choice, index) => {
+        const btn = document.createElement("button");
+        btn.textContent = choice;
+        btn.className = "option";
+        btn.onclick = () => {
+          if (!answered) {
+            sendAnswer(choice);
+            disableOptions();
+            clearInterval(timerInterval);
+          }
+        };
+        optionsDiv.appendChild(btn);
       });
+    }
 
-      // サーバーからの問題出題
-      socket.on('question', data => {
-        // 初期化
-        resultDiv.textContent = '';
-        standbyDiv.style.display = 'none';
-
-        if (!data || !data.question || !Array.isArray(data.choices)) {
-          questionText.textContent = '問題データが正しくありません';
-          choicesDiv.innerHTML = '';
-          return;
-        }
-
-        questionText.textContent = data.question;
-
-        // 選択肢ボタン生成
-        choicesDiv.innerHTML = '';
-        data.choices.forEach(choice => {
-          const btn = document.createElement('button');
-          btn.textContent = choice;
-          btn.onclick = () => {
-            const elapsed = Date.now() - questionStartTime;
-            socket.emit('answer', { name: userName, choice, elapsed });
-            enableChoices(false);
-            standbyDiv.style.display = 'block';
-          };
-          choicesDiv.appendChild(btn);
-        });
-        enableChoices(true);
-        questionStartTime = Date.now();
+    function sendAnswer(choice) {
+      answered = true;
+      socket.emit('answer', {
+        name: prompt("名前を入力してください") || "匿名",
+        choice: choice,
+        elapsed: Date.now()
       });
+    }
 
-      // 回答受付終了などの合図
-      socket.on('go', () => {
-        // 問題受信を待つスタンバイ状態にする
-        questionText.textContent = '問題を待っています...';
-        choicesDiv.innerHTML = '';
-        standbyDiv.style.display = 'none';
-        resultDiv.textContent = '';
-      });
-
-      // 正解発表
-      socket.on('result', data => {
-        if (!data || !data.correctAnswer) return;
-
-        const userAnswer = data.userAnswer; // クライアントが送った回答（あれば）
-        const correctAnswer = data.correctAnswer;
-
-        // 結果表示
-        if (userAnswer === undefined) {
-          resultDiv.textContent = `正解は「${correctAnswer}」です`;
-        } else if (userAnswer === correctAnswer) {
-          resultDiv.textContent = '正解です！🎉';
-          resultDiv.style.color = 'green';
-        } else {
-          resultDiv.textContent = `不正解です... 正解は「${correctAnswer}」`;
-          resultDiv.style.color = 'red';
-        }
-        standbyDiv.style.display = 'none';
-        enableChoices(false);
-      });
-
-      // 接続エラーなどのハンドリング（簡易版）
-      socket.on('connect_error', () => {
-        alert('サーバーへの接続に失敗しました。ページをリロードしてください。');
-      });
-    })();
+    function disableOptions() {
+      document.querySelectorAll(".option").forEach(btn => btn.classList.add("disabled"));
+    }
   </script>
 </body>
 </html>
