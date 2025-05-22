@@ -2,112 +2,39 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>管理者画面 - 感謝祭</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-  <style>
-    body { font-family: sans-serif; padding: 20px; }
-    label { display: block; margin-top: 10px; }
-    input, textarea { width: 100%; padding: 5px; margin-top: 5px; }
-    button { margin-top: 15px; padding: 10px 20px; font-size: 16px; }
-  </style>
+  <title>管理画面</title>
+  <script src="https://cdn.socket.io/2.5.1/socket.io.js"></script>
 </head>
 <body>
   <h1>管理者画面</h1>
-
-  <label>問題文：
-    <textarea id="questionText" rows="3" placeholder="問題文を入力してください"></textarea>
-  </label>
-
-  <label>選択肢1：
-    <input type="text" id="choice1" placeholder="選択肢1" />
-  </label>
-  <label>選択肢2：
-    <input type="text" id="choice2" placeholder="選択肢2" />
-  </label>
-  <label>選択肢3：
-    <input type="text" id="choice3" placeholder="選択肢3" />
-  </label>
-  <label>選択肢4：
-    <input type="text" id="choice4" placeholder="選択肢4" />
-  </label>
-
-  <label>正解番号（1〜4）：
-    <input type="number" id="correctAnswer" min="1" max="4" />
-  </label>
-
-  <button id="sendQuestionBtn">問題送信</button>
-  <button id="startBtn">出題スタート</button>
-  <button id="showResultBtn">結果発表</button>
+  <input id="question" placeholder="問題文" /><br />
+  <input id="choice1" placeholder="選択肢1" />
+  <input id="choice2" placeholder="選択肢2" /><br />
+  <input id="choice3" placeholder="選択肢3" />
+  <input id="choice4" placeholder="選択肢4" /><br />
+  <input id="correct" placeholder="正解（選択肢の文字列）" /><br />
+  <button onclick="sendQuestion()">問題送信</button>
+  <button onclick="sendResult()">正解発表</button>
 
   <script>
-    // サーバーURLは環境に応じて必ず書き換えてください
-    const socket = io('https://all-star-festival.onrender.com');
+    const socket = io();
 
-    const questionText = document.getElementById('questionText');
-    const choiceInputs = [
-      document.getElementById('choice1'),
-      document.getElementById('choice2'),
-      document.getElementById('choice3'),
-      document.getElementById('choice4'),
-    ];
-    const correctAnswerInput = document.getElementById('correctAnswer');
-
-    const sendBtn = document.getElementById('sendQuestionBtn');
-    const startBtn = document.getElementById('startBtn');
-    const showResultBtn = document.getElementById('showResultBtn');
-
-    // 問題送信
-    sendBtn.addEventListener('click', () => {
-      const qText = questionText.value.trim();
-      if (!qText) {
-        alert('問題文を入力してください');
-        return;
-      }
-      const choices = choiceInputs.map(input => input.value.trim());
-      if (choices.some(c => !c)) {
-        alert('すべての選択肢を入力してください');
-        return;
-      }
-      const correct = Number(correctAnswerInput.value);
-      if (!(correct >= 1 && correct <= 4)) {
-        alert('正解番号は1から4の数字で入力してください');
-        return;
-      }
-      sendBtn.disabled = true;
-
-      const questionData = {
-        text: qText,
-        choices: choices,
-        correctAnswer: correct.toString()
-      };
-      console.log('問題送信:', questionData);
-
-      socket.emit('question', questionData);
-
-      setTimeout(() => sendBtn.disabled = false, 2000);
-    });
-
-    // 出題スタート
-    startBtn.addEventListener('click', () => {
-      console.log('出題スタート');
+    function sendQuestion() {
+      const question = document.getElementById("question").value;
+      const choices = [
+        document.getElementById("choice1").value,
+        document.getElementById("choice2").value,
+        document.getElementById("choice3").value,
+        document.getElementById("choice4").value
+      ];
+      socket.emit('question', { text: question, choices: choices });
       socket.emit('go');
-    });
+    }
 
-    // 結果発表
-    showResultBtn.addEventListener('click', () => {
-      const correct = correctAnswerInput.value;
-      if (!(correct >= 1 && correct <= 4)) {
-        alert('正解番号は1から4の数字で入力してください');
-        return;
-      }
-      console.log('結果発表 正解:', correct);
-      socket.emit('result', { correctAnswer: correct.toString() });
-    });
-
-    socket.on('connect', () => {
-      console.log('管理者画面 WebSocket接続完了');
-    });
+    function sendResult() {
+      const correct = document.getElementById("correct").value;
+      socket.emit('result', { correctAnswer: correct });
+    }
   </script>
 </body>
 </html>

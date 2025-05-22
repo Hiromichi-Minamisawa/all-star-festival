@@ -3,53 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <title>モニター画面</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <script src="https://cdn.socket.io/2.5.1/socket.io.js"></script>
   <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-      background: #f8f9fa;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: white;
-    }
-    th, td {
-      padding: 10px;
-      border: 1px solid #ccc;
-      text-align: center;
-    }
-    th {
-      background: #eee;
-    }
-    tr.correct td {
-      background-color: #d4edda;
-    }
-    tr.wrong td {
-      background-color: #f8d7da;
-    }
+    /* 略：見やすいスタイル */
   </style>
 </head>
 <body>
-  <h1>回答一覧（モニター）</h1>
+  <h1>モニター画面</h1>
   <table>
     <thead>
-      <tr>
-        <th>名前</th>
-        <th>回答</th>
-        <th>時間（秒）</th>
-        <th>判定</th>
-      </tr>
+      <tr><th>名前</th><th>回答</th><th>時間（ms）</th><th>結果</th></tr>
     </thead>
     <tbody id="answerTableBody"></tbody>
   </table>
 
   <script>
     const socket = io();
-    const tableBody = document.getElementById('answerTableBody');
     const answers = new Map();
+    const tableBody = document.getElementById('answerTableBody');
 
     socket.on('go', () => {
       answers.clear();
@@ -57,29 +28,27 @@
     });
 
     socket.on('answer', data => {
-      const { name, choice, elapsed } = data;
-      answers.set(name, { choice, elapsed, result: '' });
+      answers.set(data.name, { choice: data.choice, elapsed: data.elapsed, result: '' });
       updateTable();
     });
 
     socket.on('result', data => {
-      const correctAnswer = data.correctAnswer;
-      answers.forEach((v, name) => {
-        v.result = v.choice === correctAnswer ? '○' : '×';
+      const correct = data.correctAnswer;
+      answers.forEach((val, name) => {
+        val.result = val.choice === correct ? '○' : '×';
       });
       updateTable();
     });
 
     function updateTable() {
       tableBody.innerHTML = '';
-      answers.forEach((v, name) => {
+      answers.forEach((val, name) => {
         const tr = document.createElement('tr');
-        tr.className = v.result === '○' ? 'correct' : v.result === '×' ? 'wrong' : '';
         tr.innerHTML = `
           <td>${name}</td>
-          <td>${v.choice}</td>
-          <td>${(v.elapsed / 1000).toFixed(2)}</td>
-          <td>${v.result || '...'}</td>
+          <td>${val.choice}</td>
+          <td>${val.elapsed}</td>
+          <td>${val.result}</td>
         `;
         tableBody.appendChild(tr);
       });
