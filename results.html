@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>最終結果</title>
   <style>
     body {
@@ -14,7 +14,6 @@
     button {
       padding: 10px 20px;
       font-size: 16px;
-      cursor: pointer;
     }
     table {
       border-collapse: collapse;
@@ -34,7 +33,7 @@
 <body>
   <h1>最終結果</h1>
   <button onclick="loadResults()">結果を読み込む</button>
-  <table id="rankingTable">
+  <table>
     <thead>
       <tr>
         <th>順位</th>
@@ -43,57 +42,46 @@
         <th>合計時間（ms）</th>
       </tr>
     </thead>
-    <tbody id="rankingBody">
-      <!-- ここに結果行が動的に挿入される -->
-    </tbody>
+    <tbody id="rankingBody"></tbody>
   </table>
 
   <script>
     async function loadResults() {
       try {
         const res = await fetch('/total');
+        if (!res.ok) throw new Error('ネットワークエラー');
         const rawData = await res.json();
 
         const summary = {};
-
-        for (const record of rawData) {
-          const { name, isCorrect, elapse } = record.data;
-          if (!name) continue; // 名前がないデータはスキップ
-
-          if (!summary[name]) {
-            summary[name] = { correct: 0, time: 0 };
-          }
-
+        for (const item of rawData) {
+          const { name, isCorrect, elapse } = item.data;
+          if (!name) continue;
+          if (!summary[name]) summary[name] = { correct: 0, time: 0 };
           if (isCorrect) {
             summary[name].correct += 1;
             summary[name].time += elapse || 0;
           }
         }
 
-        const ranking = Object.entries(summary).map(([name, data]) => ({
-          name,
-          correct: data.correct,
-          time: data.time
-        })).sort((a, b) => {
-          if (b.correct !== a.correct) return b.correct - a.correct;
-          return a.time - b.time;
-        });
+        const ranking = Object.entries(summary)
+          .map(([name, data]) => ({ name, ...data }))
+          .sort((a, b) => b.correct - a.correct || a.time - b.time);
 
         const tbody = document.getElementById('rankingBody');
         tbody.innerHTML = '';
-        ranking.forEach((user, index) => {
+        ranking.forEach((user, i) => {
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td>${index + 1}</td>
+            <td>${i + 1}</td>
             <td>${user.name}</td>
             <td>${user.correct}</td>
             <td>${user.time}</td>
           `;
           tbody.appendChild(tr);
         });
-      } catch (e) {
-        alert('結果の読み込みに失敗しました。');
-        console.error(e);
+      } catch (err) {
+        alert('読み込みエラー');
+        console.error(err);
       }
     }
   </script>

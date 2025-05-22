@@ -2,60 +2,45 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>モニター画面 - 感謝祭</title>
+  <title>モニター画面</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: sans-serif;
       padding: 20px;
-      background: #fafafa;
-      color: #333;
-    }
-    h1 {
-      margin-bottom: 12px;
-      font-weight: 700;
-      font-size: 1.8em;
-      text-align: center;
+      background: #f8f9fa;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 16px;
-      box-shadow: 0 0 8px rgba(0,0,0,0.1);
       background: white;
     }
     th, td {
+      padding: 10px;
       border: 1px solid #ccc;
-      padding: 12px 8px;
       text-align: center;
-      font-size: 1.1em;
     }
     th {
-      background-color: #eaeaea;
-      font-weight: 600;
+      background: #eee;
     }
     tr.correct td {
       background-color: #d4edda;
-      color: #155724;
-      font-weight: 700;
     }
     tr.wrong td {
       background-color: #f8d7da;
-      color: #721c24;
-      font-weight: 700;
     }
   </style>
 </head>
 <body>
-  <h1>モニター画面</h1>
+  <h1>回答一覧（モニター）</h1>
   <table>
     <thead>
       <tr>
         <th>名前</th>
         <th>回答</th>
         <th>時間（秒）</th>
-        <th>結果</th>
+        <th>判定</th>
       </tr>
     </thead>
     <tbody id="answerTableBody"></tbody>
@@ -66,42 +51,35 @@
     const tableBody = document.getElementById('answerTableBody');
     const answers = new Map();
 
-    // 回答受付
+    socket.on('go', () => {
+      answers.clear();
+      updateTable();
+    });
+
     socket.on('answer', data => {
       const { name, choice, elapsed } = data;
       answers.set(name, { choice, elapsed, result: '' });
       updateTable();
     });
 
-    // 出題スタートで初期化
-    socket.on('go', () => {
-      answers.clear();
-      updateTable();
-    });
-
-    // 正解発表で結果反映
     socket.on('result', data => {
       const correctAnswer = data.correctAnswer;
-      answers.forEach((value, name) => {
-        if (value.choice === correctAnswer) {
-          value.result = '○';
-        } else {
-          value.result = '×';
-        }
+      answers.forEach((v, name) => {
+        v.result = v.choice === correctAnswer ? '○' : '×';
       });
       updateTable();
     });
 
     function updateTable() {
       tableBody.innerHTML = '';
-      answers.forEach(({ choice, elapsed, result }, name) => {
+      answers.forEach((v, name) => {
         const tr = document.createElement('tr');
-        tr.className = result === '○' ? 'correct' : result === '×' ? 'wrong' : '';
+        tr.className = v.result === '○' ? 'correct' : v.result === '×' ? 'wrong' : '';
         tr.innerHTML = `
           <td>${name}</td>
-          <td>${choice}</td>
-          <td>${(elapsed / 1000).toFixed(2)}</td>
-          <td>${result || '…'}</td>
+          <td>${v.choice}</td>
+          <td>${(v.elapsed / 1000).toFixed(2)}</td>
+          <td>${v.result || '...'}</td>
         `;
         tableBody.appendChild(tr);
       });

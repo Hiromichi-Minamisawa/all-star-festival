@@ -1,131 +1,92 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const socketIo = require('socket.io'); // v2.5.1用
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);  // socket.io v2 の正しい書き方
-
-io.origins('*:*'); // ★CORS対策（開発時用）
-
-app.use(express.static('public'));
-app.use(express.json());
+const io = socketIo(server, {
+  cors: {
+    origin: '*',
+  },
+});
 
 const PORT = process.env.PORT || 3000;
 
-let currentQuestion = null;
-let currentCorrectAnswer = null;
-const answers = [];
+// 静的ファイル配信
+app.use(express.static(path.join(__dirname, 'public')));
 
-const clients = {
-  admins: new Set(),
-  participants: new Set(),
-  monitors: new Set(),
-};
+// クイズの問題を管理（例としてシンプルな配列）
+const questions = [
+  { id: 1, text: '1+1は？', correctAnswer: '2' },
+  { id: 2, text: '2+2は？', correctAnswer: '4' },
+  // 必要に応じて追加してください
+];
 
-io.on('connection', socket => {
-  console.log(`クライアント接続: ${socket.id}`);
+// 解答データ格納用（メモリ上）
+let answers = [];
 
-  socket.on('registerAdmin', () => {
-    clients.admins.add(socket.id);
-    console.log(`管理者登録: ${socket.id}`);
+// Socket.IO接続イベント
+io.on('connection', (socket) => {
+  console.log('ユーザー接続:', socket.id);
+
+  // 名前登録受信
+  socket.on('registerName', ({ name }) => {
+    socket.name = name;
+    console.log(`ユーザー登録: ${name}`);
   });
 
-  socket.on('registerName', data => {
-    if (!data || !data.name) return;
-    socket.data.name = data.name;
-    clients.participants.add(socket.id);
-    console.log(`参加者登録: ${data.name} (${socket.id})`);
+  // 管理者からの問題送信（admin.html等から）
+  socket.on('sendQuestion', (data) => {
+    const question = questions.find(q => q.id === data.id);
+    if (!question) {
+      console.warn('不正な問題ID:', data.id);
+      return;
+    }
+    io.emit('question', { text: question.text });
+    console.log('問題送信:', question.text);
+
+    // 解答情報クリア
+    answers = [];
   });
 
-  socket.on('registerMonitor', () => {
-    clients.monitors.add(socket.id);
-    console.log(`モニター登録: ${socket.id}`);
-  });
-
-  socket.on('question', data => {
-    if (!data || !data.text || !data.choices || !data.correctAnswer) return;
-    currentQuestion = data;
-    currentCorrectAnswer = data.correctAnswer;
-
-    answers.length = 0; // 以前の回答をクリア
-
-    console.log(`問題送信: ${data.text}`);
-    clients.participants.forEach(id => {
-      io.to(id).emit('question', {
-        text: data.text,
-        choices: data.choices,
-      });
-    });
-    clients.monitors.forEach(id => {
-      io.to(id).emit('go');
-    });
-  });
-
+  // 出題開始合図
   socket.on('go', () => {
+    io.emit('go');
     console.log('出題スタート');
-    clients.participants.forEach(id => {
-      io.to(id).emit('go');
-    });
-    clients.monitors.forEach(id => {
-      io.to(id).emit('go');
-    });
   });
 
-  socket.on('answer', data => {
-    const name = socket.data.name;
-    if (!name) {
-      console.log('名前未登録の参加者からの回答を無視');
-      return;
-    }
-    if (!currentCorrectAnswer) {
-      console.log('現在出題中の問題がないため回答無視');
-      return;
-    }
-    const choice = data.choice;
-    const elapsed = data.elapsed || 0;
+  // 解答受信
+  socket.on('answer', (data) => {
+    // data: { choice, name, elapsed }
+    if (!data.name) return; // 名前なしは無視
+    answers = answers.filter(a => a.name !== data.name); // 重複防止
+    answers.push(data);
 
-    if (answers.find(a => a.name === name)) {
-      console.log(`${name} はすでに回答済み`);
-      return;
-    }
-
-    const isCorrect = choice !== null && choice.toString() === currentCorrectAnswer.toString();
-
-    answers.push({ name, choice, elapsed, isCorrect });
-
-    console.log(`回答受付: ${name} 選択: ${choice} 正誤: ${isCorrect} 経過: ${elapsed}`);
-
-    clients.monitors.forEach(id => {
-      io.to(id).emit('answer', { name, choice, elapsed, result: isCorrect ? '○' : '×' });
-    });
+    // モニター画面に即時送信
+    io.emit('answer', data);
   });
 
-  socket.on('result', data => {
-    if (!data || !data.correctAnswer) return;
-    currentCorrectAnswer = data.correctAnswer;
-    console.log(`結果発表: 正解は ${currentCorrectAnswer}`);
+  // 結果発表（管理者操作などで発動）
+  socket.on('showResult', (data) => {
+    // data: { correctAnswer: '1'など }
+    if (!data.correctAnswer) return;
+    io.emit('result', { correctAnswer: data.correctAnswer });
 
-    clients.participants.forEach(id => {
-      io.to(id).emit('result', { correctAnswer: currentCorrectAnswer });
-    });
-    clients.monitors.forEach(id => {
-      io.to(id).emit('result', { correctAnswer: currentCorrectAnswer });
-    });
+    // 結果をまとめてログ用や最終集計用に保持したい場合はここに実装可能
+  });
+
+  // 合計データ取得用API代わり（必要なら）
+  app.get('/total', (req, res) => {
+    res.json(answers);
   });
 
   socket.on('disconnect', () => {
-    clients.admins.delete(socket.id);
-    clients.participants.delete(socket.id);
-    clients.monitors.delete(socket.id);
-    console.log(`切断: ${socket.id}`);
+    console.log('ユーザー切断:', socket.id);
   });
 });
 
-app.get('/total', (req, res) => {
-  res.json(answers);
-});
-
+// サーバー起動
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
