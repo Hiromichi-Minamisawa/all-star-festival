@@ -3,83 +3,109 @@
 <head>
   <meta charset="UTF-8" />
   <title>モニター画面 - 感謝祭</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; background: #222; color: white; }
-    h1, h2 { margin: 0 0 10px; }
-    #question { font-size: 24px; margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; background: #333; }
-    th, td {
-      border: 1px solid #555;
-      padding: 8px 12px;
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      background: #fafafa;
+      color: #333;
+    }
+    h1 {
+      margin-bottom: 12px;
+      font-weight: 700;
+      font-size: 1.8em;
       text-align: center;
     }
-    th { background: #444; }
-    tr.correct { background-color: #2a5; }
-    tr.incorrect { background-color: #a33; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      background: white;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 12px 8px;
+      text-align: center;
+      font-size: 1.1em;
+    }
+    th {
+      background-color: #eaeaea;
+      font-weight: 600;
+    }
+    tr.correct td {
+      background-color: #d4edda;
+      color: #155724;
+      font-weight: 700;
+    }
+    tr.wrong td {
+      background-color: #f8d7da;
+      color: #721c24;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
   <h1>モニター画面</h1>
-  <h2 id="question">問題がまだ出題されていません</h2>
-
-  <table id="answerTable">
+  <table>
     <thead>
       <tr>
-        <th>ユーザー名</th>
+        <th>名前</th>
         <th>回答</th>
-        <th>解答時間（秒）</th>
+        <th>時間（秒）</th>
+        <th>結果</th>
       </tr>
     </thead>
-    <tbody>
-      <!-- 回答がここに追加されます -->
-    </tbody>
+    <tbody id="answerTableBody"></tbody>
   </table>
 
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script>
     const socket = io();
-    const questionElem = document.getElementById('question');
-    const tableBody = document.querySelector('#answerTable tbody');
-    let correctAnswer = null;
+    const tableBody = document.getElementById('answerTableBody');
+    const answers = new Map();
 
-    // 問題が出題された
-    socket.on('question', ({ text }) => {
-      questionElem.textContent = text;
-      tableBody.innerHTML = ''; // 前の回答をクリア
-      correctAnswer = null; // 正解リセット
+    // 回答受付
+    socket.on('answer', data => {
+      const { name, choice, elapsed } = data;
+      answers.set(name, { choice, elapsed, result: '' });
+      updateTable();
     });
 
-    // 回答を受信
-    socket.on('answerResult', ({ userName, answer, time }) => {
-      const row = document.createElement('tr');
-      row.dataset.answer = answer;
-      row.innerHTML = `
-        <td>${userName}</td>
-        <td>${answer}</td>
-        <td>${(time / 1000).toFixed(2)}</td>
-      `;
-      tableBody.appendChild(row);
+    // 出題スタートで初期化
+    socket.on('go', () => {
+      answers.clear();
+      updateTable();
     });
 
-    // 正解が送られてきた
-    socket.on('result', ({ correctAnswer: answer }) => {
-      correctAnswer = answer;
-      [...tableBody.rows].forEach(row => {
-        const userAnswer = row.dataset.answer;
-        if (userAnswer === correctAnswer) {
-          row.classList.add('correct');
+    // 正解発表で結果反映
+    socket.on('result', data => {
+      const correctAnswer = data.correctAnswer;
+      answers.forEach((value, name) => {
+        if (value.choice === correctAnswer) {
+          value.result = '○';
         } else {
-          row.classList.add('incorrect');
+          value.result = '×';
         }
       });
+      updateTable();
     });
 
-    // 総合ランキング表示（今はまだログだけ）
-    socket.on('showTotalRanking', () => {
-      questionElem.textContent = '🏆 総合ランキング表示中（今後演出追加予定）';
-      tableBody.innerHTML = ''; // 画面をクリア
-    });
+    function updateTable() {
+      tableBody.innerHTML = '';
+      answers.forEach(({ choice, elapsed, result }, name) => {
+        const tr = document.createElement('tr');
+        tr.className = result === '○' ? 'correct' : result === '×' ? 'wrong' : '';
+        tr.innerHTML = `
+          <td>${name}</td>
+          <td>${choice}</td>
+          <td>${(elapsed / 1000).toFixed(2)}</td>
+          <td>${result || '…'}</td>
+        `;
+        tableBody.appendChild(tr);
+      });
+    }
   </script>
 </body>
 </html>

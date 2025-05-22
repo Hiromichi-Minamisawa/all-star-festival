@@ -1,112 +1,113 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>管理画面 - 感謝祭</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>管理者画面 - 感謝祭</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    .tabs { display: flex; gap: 10px; margin-bottom: 10px; }
-    .tab { padding: 5px 10px; background: #ddd; cursor: pointer; border-radius: 5px; }
-    .tab.active { background: #333; color: white; }
-    .panel { display: none; }
-    .panel.active { display: block; }
-
-    button { padding: 10px 15px; margin: 5px; }
-    textarea { width: 100%; height: 80px; font-size: 16px; margin: 10px 0; }
-    pre { background: #f4f4f4; padding: 10px; height: 200px; overflow-y: auto; }
+    label { display: block; margin-top: 10px; }
+    input, textarea { width: 100%; padding: 5px; margin-top: 5px; }
+    button { margin-top: 15px; padding: 10px 20px; font-size: 16px; }
   </style>
 </head>
 <body>
-  <h1>管理画面 - 感謝祭</h1>
+  <h1>管理者画面</h1>
 
-  <!-- タブ切り替え -->
-  <div class="tabs">
-    <div class="tab active" data-panel="controls">操作</div>
-    <div class="tab" data-panel="log">ログ</div>
-  </div>
+  <label>問題文：
+    <textarea id="questionText" rows="3" placeholder="問題文を入力してください"></textarea>
+  </label>
 
-  <!-- 操作パネル -->
-  <div id="controls" class="panel active">
-    <h3>問題を出題：</h3>
-    <textarea id="questionInput" placeholder="ここに問題文を入力してください"></textarea><br>
-    <button id="sendQuestion">問題を出題</button>
+  <label>選択肢1：
+    <input type="text" id="choice1" placeholder="選択肢1" />
+  </label>
+  <label>選択肢2：
+    <input type="text" id="choice2" placeholder="選択肢2" />
+  </label>
+  <label>選択肢3：
+    <input type="text" id="choice3" placeholder="選択肢3" />
+  </label>
+  <label>選択肢4：
+    <input type="text" id="choice4" placeholder="選択肢4" />
+  </label>
 
-    <hr>
+  <label>正解番号（1〜4）：
+    <input type="number" id="correctAnswer" min="1" max="4" />
+  </label>
 
-    <button id="goButton">問題スタート（GO）</button>
-    <button id="resetAnswers">解答履歴をリセット</button>
-    <button id="showTotalRanking">総合ランキング表示</button>
+  <button id="sendQuestionBtn">問題送信</button>
+  <button id="startBtn">出題スタート</button>
+  <button id="showResultBtn">結果発表</button>
 
-    <h3>正解を送信：</h3>
-    <button class="sendResult" data-answer="1">1</button>
-    <button class="sendResult" data-answer="2">2</button>
-    <button class="sendResult" data-answer="3">3</button>
-    <button class="sendResult" data-answer="4">4</button>
-  </div>
-
-  <!-- ログパネル -->
-  <div id="log" class="panel">
-    <pre id="logArea"></pre>
-  </div>
-
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script>
-    const socket = io();
+    // サーバーURLは環境に応じて必ず書き換えてください
+    const socket = io('https://all-star-festival.onrender.com');
 
-    // タブ切り替え処理
-    const tabs = document.querySelectorAll('.tab');
-    const panels = document.querySelectorAll('.panel');
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        panels.forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.panel).classList.add('active');
-      });
+    const questionText = document.getElementById('questionText');
+    const choiceInputs = [
+      document.getElementById('choice1'),
+      document.getElementById('choice2'),
+      document.getElementById('choice3'),
+      document.getElementById('choice4'),
+    ];
+    const correctAnswerInput = document.getElementById('correctAnswer');
+
+    const sendBtn = document.getElementById('sendQuestionBtn');
+    const startBtn = document.getElementById('startBtn');
+    const showResultBtn = document.getElementById('showResultBtn');
+
+    // 問題送信
+    sendBtn.addEventListener('click', () => {
+      const qText = questionText.value.trim();
+      if (!qText) {
+        alert('問題文を入力してください');
+        return;
+      }
+      const choices = choiceInputs.map(input => input.value.trim());
+      if (choices.some(c => !c)) {
+        alert('すべての選択肢を入力してください');
+        return;
+      }
+      const correct = Number(correctAnswerInput.value);
+      if (!(correct >= 1 && correct <= 4)) {
+        alert('正解番号は1から4の数字で入力してください');
+        return;
+      }
+      sendBtn.disabled = true;
+
+      const questionData = {
+        text: qText,
+        choices: choices,
+        correctAnswer: correct.toString()
+      };
+      console.log('問題送信:', questionData);
+
+      socket.emit('question', questionData);
+
+      setTimeout(() => sendBtn.disabled = false, 2000);
     });
 
-    // 出題処理（question + go）
-    document.getElementById('sendQuestion').addEventListener('click', () => {
-      const questionText = document.getElementById('questionInput').value.trim();
-      if (!questionText) return alert('問題文を入力してください');
-      socket.emit('question', { text: questionText });
+    // 出題スタート
+    startBtn.addEventListener('click', () => {
+      console.log('出題スタート');
       socket.emit('go');
-      log(`問題を出題：${questionText}`);
     });
 
-    // GOのみ送信
-    document.getElementById('goButton').addEventListener('click', () => {
-      socket.emit('go');
-      log('GO を送信しました');
+    // 結果発表
+    showResultBtn.addEventListener('click', () => {
+      const correct = correctAnswerInput.value;
+      if (!(correct >= 1 && correct <= 4)) {
+        alert('正解番号は1から4の数字で入力してください');
+        return;
+      }
+      console.log('結果発表 正解:', correct);
+      socket.emit('result', { correctAnswer: correct.toString() });
     });
 
-    // 解答履歴リセット
-    document.getElementById('resetAnswers').addEventListener('click', () => {
-      socket.emit('resetAnswerResult');
-      log('解答履歴をリセットしました');
+    socket.on('connect', () => {
+      console.log('管理者画面 WebSocket接続完了');
     });
-
-    // ランキング表示
-    document.getElementById('showTotalRanking').addEventListener('click', () => {
-      socket.emit('showTotalRanking');
-      log('総合ランキングを表示しました');
-    });
-
-    // 正解送信
-    document.querySelectorAll('.sendResult').forEach(button => {
-      button.addEventListener('click', () => {
-        const correctAnswer = button.dataset.answer;
-        socket.emit('result', { correctAnswer });
-        log(`正解「${correctAnswer}」を送信しました`);
-      });
-    });
-
-    function log(msg) {
-      const area = document.getElementById('logArea');
-      area.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
-      area.scrollTop = area.scrollHeight;
-    }
   </script>
 </body>
 </html>
